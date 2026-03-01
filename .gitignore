@@ -1,0 +1,13 @@
+# runtime uploads
+uploads/
+
+# archives
+*.rar
+*.zip
+*.7z
+
+# logs
+*.log
+
+# env
+.env
