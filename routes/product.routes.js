@@ -9,7 +9,11 @@ async function normalizeImages(input) {
 
   let imgs = [];
   if (Array.isArray(input)) imgs = input;
-  else if (typeof input === "string") imgs = input.split(",").map((s) => s.trim()).filter(Boolean);
+  else if (typeof input === "string")
+    imgs = input
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
   const out = [];
   for (const src of imgs) {
@@ -17,7 +21,7 @@ async function normalizeImages(input) {
       const saved = await saveDataUrlToGridFS(src, "products");
       out.push(saved.url); // /api/files/<id>
     } else {
-      out.push(src); // URL קיים
+      out.push(src);
     }
   }
   return out;
@@ -29,14 +33,23 @@ const withCategory = {
   populate: { path: "parent", select: "name slug icon" },
 };
 
+// GET /api/products
 router.get("/", async (req, res, next) => {
   try {
-    const { q, category, parent, min, max, sort = "createdAt_desc", page = 1, limit = 12, sale } =
-      req.query;
+    const {
+      q,
+      category,
+      parent,
+      min,
+      max,
+      sort = "createdAt_desc",
+      page = 1,
+      limit = 12,
+      sale,
+    } = req.query;
 
     const filter = { isActive: true };
     if (q) filter.$text = { $search: q };
-
     if (String(sale) === "1" || String(sale).toLowerCase() === "true") filter.onSale = true;
 
     if (category) {
@@ -82,6 +95,7 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+// GET /api/products/:slug
 router.get("/:slug", async (req, res, next) => {
   try {
     const item = await Product.findOne({ slug: req.params.slug }).populate(withCategory).lean();
@@ -92,10 +106,11 @@ router.get("/:slug", async (req, res, next) => {
   }
 });
 
+// ✅ POST /api/products  (התיקון: await)
 router.post("/", auth, admin, async (req, res, next) => {
   try {
     const body = { ...req.body };
-    if (body.images) body.images = await normalizeImages(body.images);
+    if (body.images) body.images = await normalizeImages(body.images); // ✅ חובה await
 
     const doc = await Product.create(body);
     const populated = await doc.populate(withCategory);
@@ -105,14 +120,16 @@ router.post("/", auth, admin, async (req, res, next) => {
   }
 });
 
+// ✅ PUT /api/products/:id (התיקון: await)
 router.put("/:id", auth, admin, async (req, res, next) => {
   try {
     const body = { ...req.body };
-    if ("images" in body) body.images = await normalizeImages(body.images);
+    if ("images" in body) body.images = await normalizeImages(body.images); // ✅ חובה await
 
     const updated = await Product.findByIdAndUpdate(req.params.id, body, { new: true }).populate(
       withCategory
     );
+
     res.json(updated);
   } catch (e) {
     next(e);
