@@ -1,7 +1,7 @@
 const router = require("express").Router();
 const { auth, admin } = require("../middlewares/auth");
 const Category = require("../models/Category");
-const saveBase64Image = require("../utils/saveBase64Image");
+const { saveDataUrlToGridFS } = require("../utils/gridfs");
 
 function slugify(str) {
   return String(str ?? "")
@@ -14,7 +14,7 @@ function slugify(str) {
     .replace(/^-|-$/g, "");
 }
 
-// GET /api/categories?parent=null|<id>
+// GET /api/categories?parent=null|
 router.get("/", async (req, res, next) => {
   try {
     const q = {};
@@ -35,7 +35,6 @@ router.post("/", auth, admin, async (req, res, next) => {
     const { name, parent, icon } = req.body;
 
     const cleanName = String(name).trim();
-
     const doc = {
       name: cleanName,
       slug: slugify(cleanName),
@@ -43,8 +42,9 @@ router.post("/", auth, admin, async (req, res, next) => {
       icon: null,
     };
 
-    if (icon && icon.startsWith("data:")) {
-      doc.icon = saveBase64Image(icon, "categories");
+    if (icon && String(icon).startsWith("data:")) {
+      const saved = await saveDataUrlToGridFS(icon, "categories");
+      doc.icon = saved.url;
     }
 
     const created = await Category.create(doc);
@@ -69,8 +69,9 @@ router.put("/:id", auth, admin, async (req, res, next) => {
 
     if (typeof icon !== "undefined") {
       if (icon === "") patch.icon = null;
-      else if (icon && icon.startsWith("data:")) {
-        patch.icon = saveBase64Image(icon, "categories");
+      else if (icon && String(icon).startsWith("data:")) {
+        const saved = await saveDataUrlToGridFS(icon, "categories");
+        patch.icon = saved.url;
       }
     }
 
@@ -88,10 +89,7 @@ router.put("/:id", auth, admin, async (req, res, next) => {
 // DELETE /api/categories/:id
 router.delete("/:id", auth, admin, async (req, res, next) => {
   try {
-    await Category.updateMany(
-      { parent: req.params.id },
-      { $set: { parent: null } }
-    );
+    await Category.updateMany({ parent: req.params.id }, { $set: { parent: null } });
     await Category.findByIdAndDelete(req.params.id);
     res.json({ ok: true });
   } catch (e) {

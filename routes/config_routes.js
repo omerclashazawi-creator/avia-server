@@ -5,6 +5,7 @@ const productR = require('./product.routes');
 const orderR = require('./order.routes');
 const promotionR = require('./promotion.routes');
 const metricsR = require('./metrics.routes');
+const filesR = require("./files.routes");
 
 exports.routesInit = (app) => {
   app.use("/api/auth", authR);
@@ -13,6 +14,6 @@ exports.routesInit = (app) => {
   app.use("/api/orders", orderR);
   app.use("/api/promotions", promotionR);
   app.use("/api/metrics", metricsR);
-
+  app.use("/api/files", filesR);
 
 };

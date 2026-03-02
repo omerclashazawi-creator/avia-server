@@ -2,20 +2,29 @@ const router = require("express").Router();
 const { auth, admin } = require("../middlewares/auth");
 const Product = require("../models/Product");
 const Category = require("../models/Category");
-const saveBase64Image = require("../utils/saveBase64Image");
+const { saveDataUrlToGridFS } = require("../utils/gridfs");
 
-function normalizeImages(input) {
+async function normalizeImages(input) {
   if (!input) return [];
+
   let imgs = [];
   if (Array.isArray(input)) imgs = input;
   else if (typeof input === "string")
-    imgs = input.split(",").map((s) => s.trim()).filter(Boolean);
+    imgs = input
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-  return imgs.map((src) =>
-    typeof src === "string" && src.startsWith("data:")
-      ? saveBase64Image(src, "products")
-      : src
-  );
+  const out = [];
+  for (const src of imgs) {
+    if (typeof src === "string" && src.startsWith("data:")) {
+      const saved = await saveDataUrlToGridFS(src, "products");
+      out.push(saved.url); // נשמור URL שמחזיר מהשרת (GridFS)
+    } else {
+      out.push(src);
+    }
+  }
+  return out;
 }
 
 const withCategory = {
@@ -36,25 +45,20 @@ router.get("/", async (req, res, next) => {
       sort = "createdAt_desc",
       page = 1,
       limit = 12,
-      sale, // ✅ חדש
+      sale,
     } = req.query;
 
     const filter = { isActive: true };
 
     if (q) filter.$text = { $search: q };
 
-        if (String(sale) === "1" || String(sale).toLowerCase() === "true") {
-      // או onSale=true
+    if (String(sale) === "1" || String(sale).toLowerCase() === "true") {
       filter.onSale = true;
-        }
+    }
 
-    // category: slug או id (עם הגנה)
     if (category) {
       const catStr = String(category).trim();
-
-      if (!catStr || catStr === "undefined" || catStr === "null") {
-        // מתעלמים
-      } else {
+      if (catStr && catStr !== "undefined" && catStr !== "null") {
         const isId = /^[0-9a-fA-F]{24}$/.test(catStr);
         if (isId) {
           filter.category = catStr;
@@ -66,7 +70,6 @@ router.get("/", async (req, res, next) => {
       }
     }
 
-    // parent -> כל הילדים של parent (רק אם לא נבחרה category ספציפית)
     if (parent && !filter.category) {
       const children = await Category.find({ parent }).select("_id");
       filter.category = { $in: children.map((c) => c._id) };
@@ -88,34 +91,20 @@ router.get("/", async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const [items, total] = await Promise.all([
-      Product.find(filter)
-        .sort(sortObj)
-        .skip(skip)
-        .limit(limitNum)
-        .populate(withCategory)
-        .lean(),
+      Product.find(filter).sort(sortObj).skip(skip).limit(limitNum).populate(withCategory).lean(),
       Product.countDocuments(filter),
     ]);
 
-    res.json({
-      items,
-      total,
-      page: pageNum,
-      pages: Math.ceil(total / limitNum),
-    });
+    res.json({ items, total, page: pageNum, pages: Math.ceil(total / limitNum) });
   } catch (e) {
     next(e);
   }
 });
 
-
-// GET /api/products/:slug – פריט יחיד לפי slug
+// GET /api/products/:slug
 router.get("/:slug", async (req, res, next) => {
   try {
-    const item = await Product.findOne({ slug: req.params.slug })
-      .populate(withCategory)
-      .lean();
-
+    const item = await Product.findOne({ slug: req.params.slug }).populate(withCategory).lean();
     if (!item) return res.status(404).json({ message: "Not found" });
     res.json(item);
   } catch (e) {
@@ -123,11 +112,11 @@ router.get("/:slug", async (req, res, next) => {
   }
 });
 
-// POST /api/products – יצירה
+// POST /api/products
 router.post("/", auth, admin, async (req, res, next) => {
   try {
     const body = { ...req.body };
-    if (body.images) body.images = normalizeImages(body.images);
+    if (body.images) body.images = await normalizeImages(body.images);
 
     const doc = await Product.create(body);
     const populated = await doc.populate(withCategory);
@@ -137,15 +126,15 @@ router.post("/", auth, admin, async (req, res, next) => {
   }
 });
 
-// PUT /api/products/:id – עדכון
+// PUT /api/products/:id
 router.put("/:id", auth, admin, async (req, res, next) => {
   try {
     const body = { ...req.body };
-    if ("images" in body) body.images = normalizeImages(body.images);
+    if ("images" in body) body.images = await normalizeImages(body.images);
 
-    const updated = await Product.findByIdAndUpdate(req.params.id, body, {
-      new: true,
-    }).populate(withCategory);
+    const updated = await Product.findByIdAndUpdate(req.params.id, body, { new: true }).populate(
+      withCategory
+    );
 
     res.json(updated);
   } catch (e) {
@@ -153,7 +142,7 @@ router.put("/:id", auth, admin, async (req, res, next) => {
   }
 });
 
-// DELETE /api/products/:id – מחיקה בודדת
+// DELETE /api/products/:id
 router.delete("/:id", auth, admin, async (req, res, next) => {
   try {
     await Product.findByIdAndDelete(req.params.id);
@@ -163,16 +152,15 @@ router.delete("/:id", auth, admin, async (req, res, next) => {
   }
 });
 
-// DELETE /api/products?ids=a,b,c – מחיקה מרובה
+// DELETE /api/products?ids=a,b,c
 router.delete("/", auth, admin, async (req, res, next) => {
   try {
-    const ids =
-      Array.isArray(req.body?.ids)
-        ? req.body.ids
-        : String(req.query.ids || "")
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : String(req.query.ids || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
 
     if (!ids.length) return res.status(400).json({ message: "No ids provided" });
 
