@@ -1,4 +1,5 @@
 /* routes/config_routes.js */
+
 const authR = require("./auth.routes");
 const categoryR = require("./category.routes");
 const productR = require("./product.routes");
