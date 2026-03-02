@@ -7,12 +7,12 @@ const promotionR = require('./promotion.routes');
 const metricsR = require('./metrics.routes');
 
 exports.routesInit = (app) => {
-  app.use("/auth", authR);
-  app.use("/categories", categoryR);
-  app.use("/products", productR);
-  app.use("/orders", orderR);
-  app.use("/promotions", promotionR);
-  app.use("/metrics", metricsR);
+  app.use("api/auth", authR);
+  app.use("api/categories", categoryR);
+  app.use("api/products", productR);
+  app.use("api/orders", orderR);
+  app.use("api/promotions", promotionR);
+  app.use("api/metrics", metricsR);
 
 
 };
