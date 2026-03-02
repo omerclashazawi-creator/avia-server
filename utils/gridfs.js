@@ -1,31 +1,47 @@
-// utils/gridfs.js
 const mongoose = require("mongoose");
 const { GridFSBucket, ObjectId } = require("mongodb");
 
 let bucket = null;
 const BUCKET_NAME = "files";
 
-function initGridFS() {
-    const db = mongoose.connection.db;
-    if (!db) throw new Error("MongoDB not connected (no connection.db)");
+function tryInitBucket() {
+    const db = mongoose.connection?.db;
+    if (!db) return false;
     bucket = new GridFSBucket(db, { bucketName: BUCKET_NAME });
+    return true;
+}
+
+/**
+ * אפשר לקרוא לזה פעם אחת אחרי connect,
+ * אבל גם אם שכחת - אנחנו עושים Lazy init ב-ensureBucket
+ */
+function initGridFS() {
+    if (!tryInitBucket()) {
+        throw new Error("MongoDB not connected yet (no connection.db)");
+    }
 }
 
 function ensureBucket() {
-    if (!bucket) throw new Error("GridFS bucket not initialized. Call initGridFS() after connect.");
+    if (bucket) return;
+
+    // Lazy init
+    const ok = tryInitBucket();
+    if (!ok) {
+        const state = mongoose.connection?.readyState; // 0,1,2,3
+        // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
+        throw new Error(`GridFS not ready (mongo readyState=${state}).`);
+    }
 }
 
 function parseDataUrl(dataUrl) {
     const match = /^data:([^;]+);base64,(.+)$/.exec(String(dataUrl || ""));
     if (!match) return null;
-    return {
-        mime: match[1],
-        buffer: Buffer.from(match[2], "base64"),
-    };
+    return { mime: match[1], buffer: Buffer.from(match[2], "base64") };
 }
 
 function uploadBuffer({ buffer, filename, contentType }) {
     ensureBucket();
+
     return new Promise((resolve, reject) => {
         const stream = bucket.openUploadStream(filename, {
             contentType: contentType || "application/octet-stream",

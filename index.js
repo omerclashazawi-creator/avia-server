@@ -71,6 +71,19 @@ if (MONGO_URI) {
   console.warn("⚠️ MONGO_URI is not set. Skipping MongoDB connection.");
 }
 
+app.use((req, res, next) => {
+  // אם זה endpoint שמנסה לשמור תמונה ב-GridFS (מוצרים/קטגוריות) – חייב DB
+  const needsDb =
+    (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") &&
+    (req.path.startsWith("/api/products") || req.path.startsWith("/api/categories"));
+
+  if (needsDb && mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ message: "DB not ready yet. Try again in a few seconds." });
+  }
+
+  next();
+});
+
 routesInit(app);
 
 app.use((err, req, res, next) => {
