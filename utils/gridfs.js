@@ -5,51 +5,37 @@ const { GridFSBucket, ObjectId } = require("mongodb");
 let bucket = null;
 const BUCKET_NAME = "files";
 
-/**
- * חייבים לקרוא לזה אחרי ש-Mongoose התחבר (mongoose.connection.readyState === 1)
- */
 function initGridFS() {
     const db = mongoose.connection.db;
-    if (!db) throw new Error("MongoDB is not connected yet (no connection.db)");
+    if (!db) throw new Error("MongoDB not connected (no connection.db)");
     bucket = new GridFSBucket(db, { bucketName: BUCKET_NAME });
 }
 
-/**
- * dataUrl: "data:image/png;base64,...."
- */
+function ensureBucket() {
+    if (!bucket) throw new Error("GridFS bucket not initialized. Call initGridFS() after connect.");
+}
+
 function parseDataUrl(dataUrl) {
     const match = /^data:([^;]+);base64,(.+)$/.exec(String(dataUrl || ""));
     if (!match) return null;
-    const mime = match[1];
-    const base64 = match[2];
-    const buffer = Buffer.from(base64, "base64");
-    return { mime, buffer };
+    return {
+        mime: match[1],
+        buffer: Buffer.from(match[2], "base64"),
+    };
 }
 
-function ensureBucket() {
-    if (!bucket) {
-        throw new Error("GridFS bucket not initialized. Call initGridFS() after DB connect.");
-    }
-}
-
-async function uploadBuffer({ buffer, filename, contentType }) {
+function uploadBuffer({ buffer, filename, contentType }) {
     ensureBucket();
-
     return new Promise((resolve, reject) => {
         const stream = bucket.openUploadStream(filename, {
             contentType: contentType || "application/octet-stream",
         });
-
         stream.on("finish", (file) => resolve(file));
         stream.on("error", reject);
-
         stream.end(buffer);
     });
 }
 
-/**
- * מקבל dataUrl ומחזיר URL להציג בצד לקוח: /api/files/<id>
- */
 async function saveDataUrlToGridFS(dataUrl, folder = "misc") {
     const parsed = parseDataUrl(dataUrl);
     if (!parsed) throw new Error("Invalid data URL");
@@ -73,8 +59,7 @@ async function saveDataUrlToGridFS(dataUrl, folder = "misc") {
 
 async function deleteFileById(id) {
     ensureBucket();
-    const _id = new ObjectId(String(id));
-    await bucket.delete(_id);
+    await bucket.delete(new ObjectId(String(id)));
 }
 
 function getBucket() {
@@ -82,9 +67,4 @@ function getBucket() {
     return bucket;
 }
 
-module.exports = {
-    initGridFS,
-    saveDataUrlToGridFS,
-    deleteFileById,
-    getBucket,
-};
+module.exports = { initGridFS, saveDataUrlToGridFS, deleteFileById, getBucket };

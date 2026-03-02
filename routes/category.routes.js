@@ -14,7 +14,6 @@ function slugify(str) {
     .replace(/^-|-$/g, "");
 }
 
-// GET /api/categories?parent=null|
 router.get("/", async (req, res, next) => {
   try {
     const q = {};
@@ -29,12 +28,11 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// POST /api/categories
 router.post("/", auth, admin, async (req, res, next) => {
   try {
     const { name, parent, icon } = req.body;
-
     const cleanName = String(name).trim();
+
     const doc = {
       name: cleanName,
       slug: slugify(cleanName),
@@ -44,7 +42,7 @@ router.post("/", auth, admin, async (req, res, next) => {
 
     if (icon && String(icon).startsWith("data:")) {
       const saved = await saveDataUrlToGridFS(icon, "categories");
-      doc.icon = saved.url;
+      doc.icon = saved.url; // /api/files/<id>
     }
 
     const created = await Category.create(doc);
@@ -54,7 +52,6 @@ router.post("/", auth, admin, async (req, res, next) => {
   }
 });
 
-// PUT /api/categories/:id
 router.put("/:id", auth, admin, async (req, res, next) => {
   try {
     const { name, parent, icon } = req.body;
@@ -86,7 +83,6 @@ router.put("/:id", auth, admin, async (req, res, next) => {
   }
 });
 
-// DELETE /api/categories/:id
 router.delete("/:id", auth, admin, async (req, res, next) => {
   try {
     await Category.updateMany({ parent: req.params.id }, { $set: { parent: null } });

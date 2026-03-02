@@ -9,19 +9,15 @@ async function normalizeImages(input) {
 
   let imgs = [];
   if (Array.isArray(input)) imgs = input;
-  else if (typeof input === "string")
-    imgs = input
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+  else if (typeof input === "string") imgs = input.split(",").map((s) => s.trim()).filter(Boolean);
 
   const out = [];
   for (const src of imgs) {
     if (typeof src === "string" && src.startsWith("data:")) {
       const saved = await saveDataUrlToGridFS(src, "products");
-      out.push(saved.url); // נשמור URL שמחזיר מהשרת (GridFS)
+      out.push(saved.url); // /api/files/<id>
     } else {
-      out.push(src);
+      out.push(src); // URL קיים
     }
   }
   return out;
@@ -33,39 +29,24 @@ const withCategory = {
   populate: { path: "parent", select: "name slug icon" },
 };
 
-// GET /api/products?q=&category=&parent=&min=&max=&sort=&page=&limit=
 router.get("/", async (req, res, next) => {
   try {
-    const {
-      q,
-      category,
-      parent,
-      min,
-      max,
-      sort = "createdAt_desc",
-      page = 1,
-      limit = 12,
-      sale,
-    } = req.query;
+    const { q, category, parent, min, max, sort = "createdAt_desc", page = 1, limit = 12, sale } =
+      req.query;
 
     const filter = { isActive: true };
-
     if (q) filter.$text = { $search: q };
 
-    if (String(sale) === "1" || String(sale).toLowerCase() === "true") {
-      filter.onSale = true;
-    }
+    if (String(sale) === "1" || String(sale).toLowerCase() === "true") filter.onSale = true;
 
     if (category) {
       const catStr = String(category).trim();
       if (catStr && catStr !== "undefined" && catStr !== "null") {
         const isId = /^[0-9a-fA-F]{24}$/.test(catStr);
-        if (isId) {
-          filter.category = catStr;
-        } else {
+        if (isId) filter.category = catStr;
+        else {
           const cat = await Category.findOne({ slug: catStr }).select("_id");
-          if (cat) filter.category = cat._id;
-          else filter.category = "__nope__";
+          filter.category = cat ? cat._id : "__nope__";
         }
       }
     }
@@ -101,7 +82,6 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// GET /api/products/:slug
 router.get("/:slug", async (req, res, next) => {
   try {
     const item = await Product.findOne({ slug: req.params.slug }).populate(withCategory).lean();
@@ -112,7 +92,6 @@ router.get("/:slug", async (req, res, next) => {
   }
 });
 
-// POST /api/products
 router.post("/", auth, admin, async (req, res, next) => {
   try {
     const body = { ...req.body };
@@ -126,7 +105,6 @@ router.post("/", auth, admin, async (req, res, next) => {
   }
 });
 
-// PUT /api/products/:id
 router.put("/:id", auth, admin, async (req, res, next) => {
   try {
     const body = { ...req.body };
@@ -135,14 +113,12 @@ router.put("/:id", auth, admin, async (req, res, next) => {
     const updated = await Product.findByIdAndUpdate(req.params.id, body, { new: true }).populate(
       withCategory
     );
-
     res.json(updated);
   } catch (e) {
     next(e);
   }
 });
 
-// DELETE /api/products/:id
 router.delete("/:id", auth, admin, async (req, res, next) => {
   try {
     await Product.findByIdAndDelete(req.params.id);
@@ -152,7 +128,6 @@ router.delete("/:id", auth, admin, async (req, res, next) => {
   }
 });
 
-// DELETE /api/products?ids=a,b,c
 router.delete("/", auth, admin, async (req, res, next) => {
   try {
     const ids = Array.isArray(req.body?.ids)
